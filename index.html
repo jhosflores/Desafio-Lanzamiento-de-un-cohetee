@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NASA 1962 · Simulación Numérica de Despegue</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js para gráficas dinámicas -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b1120;
+            color: #f8fafc;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Animación de fuego del cohete */
+        @keyframes flicker {
+            0%, 100% { transform: scaleY(1) scaleX(1); opacity: 0.9; }
+            50% { transform: scaleY(1.25) scaleX(0.85); opacity: 1; }
+        }
+        .rocket-flame {
+            transform-origin: top center;
+            animation: flicker 0.12s infinite alternate;
+        }
+        /* Scrollbar personalizada para tablas */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- ENCABEZADO ESTILO NASA 1962 -->
+    <header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+                    <i class="fa-solid fa-rocket"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold tracking-widest uppercase text-orange-400">NASA Langley · 1962</span>
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-900/60 text-blue-300 border border-blue-700/50">Proyecto Friendship 7</span>
+                    </div>
+                    <h1 class="text-lg sm:text-xl font-bold text-white">Simulador de Trayectoria: Euler, Heun y RK4</h1>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="resetDefaults()" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition flex items-center gap-2 border border-slate-700">
+                    <i class="fa-solid fa-rotate-left"></i> Valores Originales
+                </button>
+                <button onclick="launchAnimation()" class="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold transition flex items-center gap-2 shadow-lg shadow-orange-600/20">
+                    <i class="fa-solid fa-play"></i> Simular Despegue
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- CONTENIDO PRINCIPAL -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- FILA 1: PARÁMETROS + SIMULADOR VISUAL + INDICADORES DE ERROR -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- PANEL DE PARÁMETROS (4 columnas) -->
+            <div class="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-white flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                        <i class="fa-solid fa-sliders text-orange-500"></i> Parámetros del Modelo Físico
+                    </h2>
+                    
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Masa m (kg)</label>
+                            <input type="number" id="input-m" value="1000" step="50" min="1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Empuje T (N)</label>
+                            <input type="number" id="input-T" value="15000" step="500" min="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Gravedad g (m/s²)</label>
+                            <input type="number" id="input-g" value="9.81" step="0.01" min="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Resistencia k (kg/s)</label>
+                            <input type="number" id="input-k" value="100" step="5" min="0" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Vel. Inicial v₀ (m/s)</label>
+                            <input type="number" id="input-v0" value="0" step="1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Alt. Inicial y₀ (m)</label>
+                            <input type="number" id="input-y0" value="0" step="1" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Tiempo Total t (s)</label>
+                            <input type="number" id="input-tmax" value="20" step="2" min="2" max="200" class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-orange-400 mb-1">Paso Euler h (s)</label>
+                            <select id="input-h" class="w-full bg-slate-950 border border-orange-500/60 rounded-lg px-3 py-2 text-sm mono text-white focus:border-orange-500 focus:outline-none">
+                                <option value="2" selected>2.00 s (10 pasos)</option>
+                                <option value="1">1.00 s (20 pasos)</option>
+                                <option value="0.5">0.50 s (40 pasos)</option>
+                                <option value="0.25">0.25 s (80 pasos)</option>
+                                <option value="0.1">0.10 s (200 pasos)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ECUACIÓN DINÁMICA RESULTANTE -->
+                <div class="mt-4 p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <p class="text-xs text-slate-400 mb-1">Ecuación Diferencial Resultante:</p>
+                    <p id="edo-formula" class="text-sm mono font-bold text-blue-400">dv/dt = 5.1900 - 0.1000·v</p>
+                </div>
+            </div>
+
+            <!-- SIMULADOR VISUAL DEL COHETE (3 columnas) -->
+            <div class="lg:col-span-3 bg-gradient-to-b from-slate-950 via-blue-950/40 to-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl relative overflow-hidden flex flex-col justify-between min-h-[340px]">
+                <div class="flex justify-between items-center z-10">
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Torre de Lanzamiento</span>
+                    <span id="sim-time-badge" class="text-xs mono px-2 py-1 rounded bg-slate-800 text-orange-400 font-bold">t = 0.0 s</span>
+                </div>
+
+                <!-- Estrellas decorativas -->
+                <div class="absolute inset-0 opacity-30 pointer-events-none" style="background-image: radial-gradient(#ffffff 1px, transparent 1px); background-size: 24px 24px;"></div>
+
+                <!-- Marcadores de altura -->
+                <div class="relative flex-grow my-2 border-l border-dashed border-slate-700 ml-3 flex flex-col justify-between text-[10px] mono text-slate-500 pl-2">
+                    <span id="alt-marker-top">600 m</span>
+                    <span id="alt-marker-mid">300 m</span>
+                    <span>0 m (Plataforma)</span>
+
+                    <!-- COHETE SVG ANIMADO -->
+                    <div id="rocket-sprite" class="absolute left-1/2 -translate-x-1/2 bottom-0 transition-all duration-75 flex flex-col items-center">
+                        <svg width="36" height="64" viewBox="0 0 40 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Cuerpo -->
+                            <path d="M20 4C12 16 10 32 10 48H30C30 32 28 16 20 4Z" fill="#F8FAFC"/>
+                            <!-- Punta -->
+                            <path d="M20 4C17 9 15 14 14 18H26C25 14 23 9 20 4Z" fill="#EA580C"/>
+                            <!-- Ventana -->
+                            <circle cx="20" cy="28" r="4" fill="#1D4ED8" stroke="#94A3B8" stroke-width="1.5"/>
+                            <!-- Aletas -->
+                            <path d="M10 38L3 52H10V38Z" fill="#EA580C"/>
+                            <path d="M30 38L37 52H30V38Z" fill="#EA580C"/>
+                            <!-- Tobera -->
+                            <rect x="14" y="48" width="12" height="4" fill="#475569"/>
+                            <!-- Fuego -->
+                            <path id="rocket-flame" class="rocket-flame hidden" d="M15 52L20 68L25 52H15Z" fill="#F59E0B"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <!-- Telemetría en vivo -->
+                <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-2.5 z-10 grid grid-cols-2 gap-2 text-center">
+                    <div>
+                        <p class="text-[10px] text-slate-400 uppercase">Altura Actual</p>
+                        <p id="sim-alt-live" class="text-sm mono font-bold text-white">0.00 m</p>
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-slate-400 uppercase">Velocidad Actual</p>
+                        <p id="sim-vel-live" class="text-sm mono font-bold text-orange-400">0.00 m/s</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RESUMEN DE RESULTADOS Y VALIDACIÓN DE SEGURIDAD (5 columnas) -->
+            <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-white flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                        <i class="fa-solid fa-gauge-high text-blue-400"></i> Telemetría Final (t = <span id="lbl-tmax">20</span> s)
+                    </h2>
+
+                    <!-- Comparativa Euler vs Exacta -->
+                    <div class="grid grid-cols-2 gap-3 mb-4">
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                            <p class="text-xs text-slate-400">Velocidad Euler (h=<span class="lbl-h">2</span>s)</p>
+                            <p id="res-v-euler" class="text-xl mono font-bold text-orange-400 mt-1">46.3273 m/s</p>
+                            <p class="text-xs text-slate-500 mt-1">Exacta: <span id="res-v-exact" class="mono text-blue-400 font-semibold">44.8761 m/s</span></p>
+                        </div>
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3">
+                            <p class="text-xs text-slate-400">Altura Euler (h=<span class="lbl-h">2</span>s)</p>
+                            <p id="res-y-euler" class="text-xl mono font-bold text-orange-400 mt-1">574.7272 m</p>
+                            <p class="text-xs text-slate-500 mt-1">Exacta: <span id="res-y-exact" class="mono text-blue-400 font-semibold">589.2390 m</span></p>
+                        </div>
+                    </div>
+
+                    <!-- Evaluación de Límites de Seguridad NASA -->
+                    <div class="space-y-2.5">
+                        <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+                            <span class="text-xs text-slate-300">Error Absoluto Velocidad (Meta &lt; 0.5 m/s)</span>
+                            <span id="err-v-badge" class="text-xs mono font-bold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">1.4512 m/s</span>
+                        </div>
+                        <div class="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">
+                            <span class="text-xs text-slate-300">Error Absoluto Altura (Meta &lt; 5.0 m)</span>
+                            <span id="err-y-badge" class="text-xs mono font-bold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800">14.5118 m</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alerta de Estado de Misión -->
+                <div id="mission-status-box" class="mt-4 p-3 rounded-xl bg-red-950/40 border border-red-800/60 flex items-start gap-3">
+                    <i id="mission-status-icon" class="fa-solid fa-triangle-exclamation text-red-400 mt-0.5"></i>
+                    <div>
+                        <p id="mission-status-title" class="text-xs font-bold text-red-300">Precisión Insuficiente para el Lanzamiento</p>
+                        <p id="mission-status-desc" class="text-xs text-red-200/80 mt-0.5">Reduce el paso h para cumplir los umbrales de error del ejercicio. Son criterios académicos, no márgenes oficiales de la NASA.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILA 2: GRÁFICAS COMPARATIVAS -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-line text-orange-500"></i> Velocidad vs. Tiempo v(t)
+                    </h3>
+                    <span class="text-xs text-slate-400">Comparativa de Métodos</span>
+                </div>
+                <div class="relative h-64 w-full">
+                    <canvas id="velocityChart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-chart-area text-blue-400"></i> Altura vs. Tiempo y(t)
+                    </h3>
+                    <span class="text-xs text-slate-400">Comparativa de Métodos</span>
+                </div>
+                <div class="relative h-64 w-full">
+                    <canvas id="heightChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILA 3: AMPLIACIÓN DE RÚBRICA (COMPARATIVA EULER vs HEUN vs RK4) -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800">
+                <div>
+                    <span class="text-xs font-bold uppercase tracking-wider text-emerald-400">Ampliación de Precisión Numérica</span>
+                    <h3 class="text-base font-bold text-white">Comparación de Métodos en t = <span class="lbl-tmax-2">20</span> s (Mismo Paso h = <span class="lbl-h">2</span> s)</h3>
+                </div>
+                <p class="text-xs text-slate-400 max-w-md">
+                    Justificación: <b>Runge-Kutta 4 (RK4)</b> evalúa 4 pendientes por intervalo (error global O(h⁴)), logrando una precisión casi idéntica a la solución analítica incluso con pasos grandes.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <!-- Euler -->
+                <div class="bg-slate-950 border border-orange-500/40 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-orange-400 uppercase">1. Método de Euler</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">Orden O(h)</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Vel: <span id="comp-euler-v" class="mono text-white font-bold">46.3273</span> m/s</p>
+                    <p class="text-xs text-slate-400">Alt: <span id="comp-euler-y" class="mono text-white font-bold">574.7272</span> m</p>
+                    <p class="text-xs text-red-400 mt-2 mono">Error v: <span id="comp-euler-err-v">1.4512</span> m/s</p>
+                    <p class="text-xs text-red-400 mono">Error alt.: <span id="comp-euler-err-y">14.5118</span> m</p>
+                </div>
+
+                <!-- Heun -->
+                <div class="bg-slate-950 border border-purple-500/40 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-purple-400 uppercase">2. Método de Heun</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">Orden O(h²)</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Vel: <span id="comp-heun-v" class="mono text-white font-bold">44.7664</span> m/s</p>
+                    <p class="text-xs text-slate-400">Alt: <span id="comp-heun-y" class="mono text-white font-bold">590.3355</span> m</p>
+                    <p class="text-xs text-amber-400 mt-2 mono">Error v: <span id="comp-heun-err-v">0.0522</span> m/s</p>
+                    <p class="text-xs text-amber-400 mono">Error alt.: <span id="comp-heun-err-y">0.5221</span> m</p>
+                </div>
+
+                <!-- RK4 -->
+                <div class="bg-slate-950 border border-emerald-500/50 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-emerald-400 uppercase">3. Runge-Kutta (RK4)</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-950 text-emerald-300">Orden O(h⁴)</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Vel: <span id="comp-rk4-v" class="mono text-white font-bold">44.8761</span> m/s</p>
+                    <p class="text-xs text-slate-400">Alt: <span id="comp-rk4-y" class="mono text-white font-bold">589.2391</span> m</p>
+                    <p class="text-xs text-emerald-400 mt-2 mono">Error v: <span id="comp-rk4-err-v">0.0001</span> m/s</p>
+                    <p class="text-xs text-emerald-400 mono">Error alt.: <span id="comp-rk4-err-y">0.0001</span> m</p>
+                </div>
+
+                <!-- Analítica -->
+                <div class="bg-slate-950 border border-blue-500/50 rounded-xl p-4">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-blue-400 uppercase">4. Solución Exacta</span>
+                        <span class="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-300">Analítica</span>
+                    </div>
+                    <p class="text-xs text-slate-400">Vel: <span id="comp-exact-v" class="mono text-white font-bold">44.8761</span> m/s</p>
+                    <p class="text-xs text-slate-400">Alt: <span id="comp-exact-y" class="mono text-white font-bold">589.2390</span> m</p>
+                    <p class="text-xs text-blue-400 mt-2 mono">Referencia Real (0.0000)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- FILA 4: TABLA DE ITERACIONES DETALLADA -->
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                    <i class="fa-solid fa-table text-orange-500"></i> Tabla de Iteraciones Paso a Paso
+                </h3>
+                <button onclick="exportCSV()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition flex items-center gap-2 self-start sm:self-auto">
+                    <i class="fa-solid fa-file-csv text-emerald-400"></i> Exportar Tabla CSV
+                </button>
+            </div>
+
+            <div class="overflow-x-auto max-h-96 rounded-xl border border-slate-800">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-950 sticky top-0 z-10 text-xs uppercase text-slate-400 border-b border-slate-800">
+                        <tr>
+                            <th class="py-3 px-4">Iter (n)</th>
+                            <th class="py-3 px-4">Tiempo (s)</th>
+                            <th class="py-3 px-4 text-orange-400">v Euler (m/s)</th>
+                            <th class="py-3 px-4 text-purple-400">v Heun (m/s)</th>
+                            <th class="py-3 px-4 text-emerald-400">v RK4 (m/s)</th>
+                            <th class="py-3 px-4 text-blue-400">v Exacta (m/s)</th>
+                            <th class="py-3 px-4 text-red-400">Error v Euler</th>
+                            <th class="py-3 px-4 text-red-400">Error v Heun</th>
+                            <th class="py-3 px-4 text-red-400">Error v RK4</th>
+                            <th class="py-3 px-4 text-orange-400">y Euler (m)</th>
+                            <th class="py-3 px-4 text-purple-400">y Heun (m)</th>
+                            <th class="py-3 px-4 text-emerald-400">y RK4 (m)</th>
+                            <th class="py-3 px-4 text-blue-400">y Exacta (m)</th>
+                            <th class="py-3 px-4 text-red-400">Error y Euler</th>
+                            <th class="py-3 px-4 text-red-400">Error y Heun</th>
+                            <th class="py-3 px-4 text-red-400">Error y RK4</th>
+                        </tr>
+                    </thead>
+                    <tbody id="iterations-tbody" class="divide-y divide-slate-800/70 text-xs mono text-slate-300 bg-slate-900/50">
+                        <!-- Filas generadas dinámicamente por JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- PIE DE PÁGINA -->
+    <footer class="bg-slate-950 border-t border-slate-800 py-4 text-center text-xs text-slate-500">
+        Modelo didáctico ficticio · Inspirado en Katherine Johnson y la misión Friendship 7 (NASA, 1962). No reproduce la trayectoria real ni certifica seguridad de vuelo.
+    </footer>
+
+    <script>
+        // Variables globales para las gráficas y datos
+        let velocityChartInstance = null;
+        let heightChartInstance = null;
+        let simulationData = [];
+        let animInterval = null;
+
+        // Función derivada dv/dt = A - B*v
+        function dvdt(v, A, B) {
+            return A - B * v;
+        }
+
+        // Solución analítica exacta para v(t) y y(t)
+        function exactSolution(t, v0, y0, A, B) {
+            if (Math.abs(B) < 1e-9) {
+                // Caso límite sin resistencia del aire (k = 0)
+                const v = v0 + A * t;
+                const y = y0 + v0 * t + 0.5 * A * t * t;
+                return { v, y };
+            }
+            const vTerm = A / B;
+            const expTerm = Math.exp(-B * t);
+            const v = vTerm + (v0 - vTerm) * expTerm;
+            const y = y0 + vTerm * t + ((v0 - vTerm) / B) * (1 - expTerm);
+            return { v, y };
+        }
+
+        // Ejecutar todos los cálculos numéricos y actualizar UI
+        function runSimulation() {
+            const m = parseFloat(document.getElementById('input-m').value) || 1000;
+            const T = parseFloat(document.getElementById('input-T').value) || 0;
+            const g = parseFloat(document.getElementById('input-g').value) || 9.81;
+            const k = parseFloat(document.getElementById('input-k').value) || 0;
+            const v0 = parseFloat(document.getElementById('input-v0').value) || 0;
+            const y0 = parseFloat(document.getElementById('input-y0').value) || 0;
+            const tmax = parseFloat(document.getElementById('input-tmax').value) || 20;
+            const h = parseFloat(document.getElementById('input-h').value) || 2;
+
+            // Coeficientes de la EDO: dv/dt = (T/m - g) - (k/m)*v = A - B*v
+            const A = (T / m) - g;
+            const B = k / m;
+
+            document.getElementById('edo-formula').textContent = `dv/dt = ${A.toFixed(4)} - ${B.toFixed(4)}·v`;
+            document.getElementById('lbl-tmax').textContent = tmax;
+            document.querySelectorAll('.lbl-tmax-2').forEach(el => el.textContent = tmax);
+            document.querySelectorAll('.lbl-h').forEach(el => el.textContent = h);
+
+            const steps = Math.ceil(tmax / h);
+            simulationData = [];
+
+            // Estados iniciales
+            let vEuler = v0, yEuler = y0;
+            let vHeun = v0, yHeun = y0;
+            let vRK4 = v0, yRK4 = y0;
+
+            for (let n = 0; n <= steps; n++) {
+                const t = Math.min(n * h, tmax);
+                const exact = exactSolution(t, v0, y0, A, B);
+
+                simulationData.push({
+                    n, t,
+                    vEuler, yEuler, vHeun, yHeun, vRK4, yRK4,
+                    vExact: exact.v,
+                    yExact: exact.y,
+                    errVEuler: Math.abs(exact.v - vEuler),
+                    errYEuler: Math.abs(exact.y - yEuler)
+                });
+
+                if (n < steps) {
+                    // El último intervalo se acorta para terminar exactamente en tmax.
+                    const dt = Math.min(h, tmax - t);
+
+                    // 1. Método de Euler
+                    const aEuler = dvdt(vEuler, A, B);
+                    const nextVEuler = vEuler + dt * aEuler;
+                    const nextYEuler = yEuler + dt * vEuler;
+
+                    // 2. Método de Heun (Predictor-Corrector)
+                    const k1v_h = dvdt(vHeun, A, B);
+                    const k1y_h = vHeun;
+                    const vPred = vHeun + dt * k1v_h;
+                    const k2v_h = dvdt(vPred, A, B);
+                    const k2y_h = vPred;
+                    const nextVHeun = vHeun + (dt / 2) * (k1v_h + k2v_h);
+                    const nextYHeun = yHeun + (dt / 2) * (k1y_h + k2y_h);
+
+                    // 3. Método de Runge-Kutta de cuarto orden (RK4)
+                    const k1v = dvdt(vRK4, A, B);
+                    const k1y = vRK4;
+                    const k2v = dvdt(vRK4 + 0.5 * dt * k1v, A, B);
+                    const k2y = vRK4 + 0.5 * dt * k1v;
+                    const k3v = dvdt(vRK4 + 0.5 * dt * k2v, A, B);
+                    const k3y = vRK4 + 0.5 * dt * k2v;
+                    const k4v = dvdt(vRK4 + dt * k3v, A, B);
+                    const k4y = vRK4 + dt * k3v;
+
+                    const nextVRK4 = vRK4 + (dt / 6) * (k1v + 2*k2v + 2*k3v + k4v);
+                    const nextYRK4 = yRK4 + (dt / 6) * (k1y + 2*k2y + 2*k3y + k4y);
+
+                    vEuler = nextVEuler; yEuler = nextYEuler;
+                    vHeun = nextVHeun; yHeun = nextYHeun;
+                    vRK4 = nextVRK4; yRK4 = nextYRK4;
+                }
+            }
+
+            updateUI();
+        }
+
+        // Actualizar tarjetas, alertas, tabla y gráficas
+        function updateUI() {
+            const last = simulationData[simulationData.length - 1];
+
+            // Tarjetas principales
+            document.getElementById('res-v-euler').textContent = `${last.vEuler.toFixed(4)} m/s`;
+            document.getElementById('res-v-exact').textContent = `${last.vExact.toFixed(4)} m/s`;
+            document.getElementById('res-y-euler').textContent = `${last.yEuler.toFixed(4)} m`;
+            document.getElementById('res-y-exact').textContent = `${last.yExact.toFixed(4)} m`;
+
+            // Badges de error y validación
+            const errVBadge = document.getElementById('err-v-badge');
+            const errYBadge = document.getElementById('err-y-badge');
+            errVBadge.textContent = `${last.errVEuler.toFixed(4)} m/s`;
+            errYBadge.textContent = `${last.errYEuler.toFixed(4)} m`;
+
+            const vOk = last.errVEuler < 0.5;
+            const yOk = last.errYEuler < 5.0;
+
+            errVBadge.className = vOk
+                ? 'text-xs mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800'
+                : 'text-xs mono font-bold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800';
+
+            errYBadge.className = yOk
+                ? 'text-xs mono font-bold px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800'
+                : 'text-xs mono font-bold px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800';
+
+            // Caja de estado de misión
+            const statusBox = document.getElementById('mission-status-box');
+            const statusIcon = document.getElementById('mission-status-icon');
+            const statusTitle = document.getElementById('mission-status-title');
+            const statusDesc = document.getElementById('mission-status-desc');
+
+            if (vOk && yOk) {
+                statusBox.className = 'mt-4 p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 flex items-start gap-3';
+                statusIcon.className = 'fa-solid fa-circle-check text-emerald-400 mt-0.5';
+                statusTitle.className = 'text-xs font-bold text-emerald-300';
+                statusTitle.textContent = '¡Cálculos numéricos dentro del umbral!';
+                statusDesc.className = 'text-xs text-emerald-200/80 mt-0.5';
+                statusDesc.textContent = 'Los errores numéricos de Euler cumplen los umbrales didácticos definidos. Esto no certifica la seguridad de un lanzamiento real.';
+            } else {
+                statusBox.className = 'mt-4 p-3 rounded-xl bg-red-950/40 border border-red-800/60 flex items-start gap-3';
+                statusIcon.className = 'fa-solid fa-triangle-exclamation text-red-400 mt-0.5';
+                statusTitle.className = 'text-xs font-bold text-red-300';
+                statusTitle.textContent = 'Precisión Insuficiente para el Lanzamiento';
+                statusDesc.className = 'text-xs text-red-200/80 mt-0.5';
+                statusDesc.textContent = 'El error numérico supera uno o ambos umbrales didácticos. Reduce h y vuelve a calcular.';
+            }
+
+            // Tarjetas comparativas (Euler vs Heun vs RK4 vs Exacta)
+            document.getElementById('comp-euler-v').textContent = last.vEuler.toFixed(4);
+            document.getElementById('comp-euler-y').textContent = last.yEuler.toFixed(4);
+            document.getElementById('comp-euler-err-v').textContent = last.errVEuler.toFixed(4);
+            document.getElementById('comp-euler-err-y').textContent = last.errYEuler.toFixed(4);
+
+            document.getElementById('comp-heun-v').textContent = last.vHeun.toFixed(4);
+            document.getElementById('comp-heun-y').textContent = last.yHeun.toFixed(4);
+            document.getElementById('comp-heun-err-v').textContent = Math.abs(last.vExact - last.vHeun).toFixed(4);
+            document.getElementById('comp-heun-err-y').textContent = Math.abs(last.yExact - last.yHeun).toFixed(4);
+
+            document.getElementById('comp-rk4-v').textContent = last.vRK4.toFixed(4);
+            document.getElementById('comp-rk4-y').textContent = last.yRK4.toFixed(4);
+            document.getElementById('comp-rk4-err-v').textContent = Math.abs(last.vExact - last.vRK4).toFixed(6);
+            document.getElementById('comp-rk4-err-y').textContent = Math.abs(last.yExact - last.yRK4).toFixed(6);
+
+            document.getElementById('comp-exact-v').textContent = last.vExact.toFixed(4);
+            document.getElementById('comp-exact-y').textContent = last.yExact.toFixed(4);
+
+            // Actualizar marcadores del cohete
+            const maxAlt = Math.max(100, Math.ceil(last.yExact / 100) * 100);
+            document.getElementById('alt-marker-top').textContent = `${maxAlt} m`;
+            document.getElementById('alt-marker-mid').textContent = `${Math.round(maxAlt / 2)} m`;
+
+            // Renderizar tabla
+            renderTable();
+
+            // Renderizar gráficas
+            renderCharts();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('iterations-tbody');
+            tbody.innerHTML = '';
+
+            simulationData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-800/50 transition';
+                tr.innerHTML = `
+                    <td class="py-2.5 px-4 font-bold text-slate-400">${row.n}</td>
+                    <td class="py-2.5 px-4 text-white">${row.t.toFixed(2)}</td>
+                    <td class="py-2.5 px-4 text-orange-300">${row.vEuler.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-purple-300">${row.vHeun.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-emerald-300">${row.vRK4.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-blue-300">${row.vExact.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${row.errVEuler.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${Math.abs(row.vExact - row.vHeun).toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${Math.abs(row.vExact - row.vRK4).toFixed(6)}</td>
+                    <td class="py-2.5 px-4 text-orange-300 font-semibold">${row.yEuler.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-purple-300">${row.yHeun.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-emerald-300">${row.yRK4.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-blue-300 font-semibold">${row.yExact.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${row.errYEuler.toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${Math.abs(row.yExact - row.yHeun).toFixed(4)}</td>
+                    <td class="py-2.5 px-4 text-red-300">${Math.abs(row.yExact - row.yRK4).toFixed(6)}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function renderCharts() {
+            const labels = simulationData.map(d => d.t + 's');
+            const vEulerData = simulationData.map(d => d.vEuler);
+            const vRK4Data = simulationData.map(d => d.vRK4);
+            const vExactData = simulationData.map(d => d.vExact);
+
+            const yEulerData = simulationData.map(d => d.yEuler);
+            const yHeunData = simulationData.map(d => d.yHeun);
+            const yExactData = simulationData.map(d => d.yExact);
+
+            const commonOptions = {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: {
+                        labels: { color: '#cbd5e1', font: { family: 'Inter', size: 11 } }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: { color: '#64748b', maxTicksLimit: 10 },
+                        grid: { color: '#1e293b' }
+                    },
+                    y: {
+                        ticks: { color: '#64748b' },
+                        grid: { color: '#1e293b' }
+                    }
+                }
+            };
+
+            // Gráfica de Velocidad
+            const ctxV = document.getElementById('velocityChart').getContext('2d');
+            if (velocityChartInstance) velocityChartInstance.destroy();
+            velocityChartInstance = new Chart(ctxV, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Euler (Aprox)',
+                            data: vEulerData,
+                            borderColor: '#f97316',
+                            backgroundColor: '#f97316',
+                            borderWidth: 2.5,
+                            pointRadius: simulationData.length <= 25 ? 3 : 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'RK4',
+                            data: vRK4Data,
+                            borderColor: '#10b981',
+                            borderDash: [4, 4],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Solución Analítica',
+                            data: vExactData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+
+            // Gráfica de Altura
+            const ctxY = document.getElementById('heightChart').getContext('2d');
+            if (heightChartInstance) heightChartInstance.destroy();
+            heightChartInstance = new Chart(ctxY, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Euler (Aprox)',
+                            data: yEulerData,
+                            borderColor: '#f97316',
+                            backgroundColor: '#f97316',
+                            borderWidth: 2.5,
+                            pointRadius: simulationData.length <= 25 ? 3 : 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Heun',
+                            data: yHeunData,
+                            borderColor: '#a855f7',
+                            borderDash: [4, 4],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.2
+                        },
+                        {
+                            label: 'Solución Analítica',
+                            data: yExactData,
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            borderWidth: 2.5,
+                            pointRadius: 0,
+                            fill: true,
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: commonOptions
+            });
+        }
+
+        // Animación visual del cohete en la torre
+        function launchAnimation() {
+            if (animInterval) clearInterval(animInterval);
+            
+            const rocket = document.getElementById('rocket-sprite');
+            const flame = document.getElementById('rocket-flame');
+            const timeBadge = document.getElementById('sim-time-badge');
+            const altLive = document.getElementById('sim-alt-live');
+            const velLive = document.getElementById('sim-vel-live');
+
+            const last = simulationData[simulationData.length - 1];
+            const maxAlt = Math.max(100, Math.ceil(last.yExact / 100) * 100);
+
+            let idx = 0;
+            flame.classList.remove('hidden');
+
+            const stepDelay = Math.max(40, Math.min(250, 2500 / simulationData.length));
+
+            animInterval = setInterval(() => {
+                if (idx >= simulationData.length) {
+                    clearInterval(animInterval);
+                    flame.classList.add('hidden');
+                    return;
+                }
+
+                const pt = simulationData[idx];
+                const pct = Math.min(82, Math.max(0, (pt.yEuler / maxAlt) * 82));
+                
+                rocket.style.bottom = `${pct}%`;
+                timeBadge.textContent = `t = ${pt.t.toFixed(1)} s`;
+                altLive.textContent = `${pt.yEuler.toFixed(2)} m`;
+                velLive.textContent = `${pt.vEuler.toFixed(2)} m/s`;
+
+                idx++;
+            }, stepDelay);
+        }
+
+        // Restablecer parámetros por defecto del ejercicio
+        function resetDefaults() {
+            document.getElementById('input-m').value = 1000;
+            document.getElementById('input-T').value = 15000;
+            document.getElementById('input-g').value = 9.81;
+            document.getElementById('input-k').value = 100;
+            document.getElementById('input-v0').value = 0;
+            document.getElementById('input-y0').value = 0;
+            document.getElementById('input-tmax').value = 20;
+            document.getElementById('input-h').value = 2;
+            runSimulation();
+        }
+
+        // Exportar tabla a CSV para el informe
+        function exportCSV() {
+            let csv = "Iteracion,Tiempo(s),v_Euler(m/s),v_Heun(m/s),v_RK4(m/s),v_Exacta(m/s),Error_v_Euler,Error_v_Heun,Error_v_RK4,y_Euler(m),y_Heun(m),y_RK4(m),y_Exacta(m),Error_y_Euler,Error_y_Heun,Error_y_RK4\n";
+            simulationData.forEach(r => {
+                csv += `${r.n},${r.t},${r.vEuler.toFixed(6)},${r.vHeun.toFixed(6)},${r.vRK4.toFixed(6)},${r.vExact.toFixed(6)},${r.errVEuler.toFixed(6)},${Math.abs(r.vExact-r.vHeun).toFixed(6)},${Math.abs(r.vExact-r.vRK4).toFixed(6)},${r.yEuler.toFixed(6)},${r.yHeun.toFixed(6)},${r.yRK4.toFixed(6)},${r.yExact.toFixed(6)},${r.errYEuler.toFixed(6)},${Math.abs(r.yExact-r.yHeun).toFixed(6)},${Math.abs(r.yExact-r.yRK4).toFixed(6)}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'simulacion_nasa_1962_euler.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Escuchar cambios en tiempo real en todos los inputs
+        document.querySelectorAll('input, select').forEach(el => {
+            el.addEventListener('input', runSimulation);
+        });
+
+        // Inicializar al cargar
+        window.onload = function() {
+            runSimulation();
+        };
+    </script>
+</body>
+</html>
